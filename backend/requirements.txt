@@ -1,0 +1,24 @@
+# Web framework
+fastapi>=0.110
+uvicorn[standard]
+python-multipart
+
+# AI / LLM
+langchain>=0.2
+langchain-google-genai
+langchain-community
+
+# Vector store
+faiss-cpu
+
+# Document parsing
+pdfplumber
+python-docx
+
+# Web scraping
+beautifulsoup4
+httpx
+
+# Configuration
+pydantic-settings
+python-dotenv

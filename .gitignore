@@ -1,0 +1,6 @@
+ui-template/
+.env
+.env.local
+backend/venv/
+venv/
+.venv/
