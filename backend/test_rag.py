@@ -1,5 +1,6 @@
 import asyncio
-import os
+
+from app.config import get_settings
 from app.rag.loader import load_docx
 from app.rag.chunker import chunk_text
 from app.rag.embedder import get_embeddings
@@ -27,6 +28,8 @@ async def main():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    # Ensure env var is set
-    os.environ['GOOGLE_API_KEY']='AIzaSyCCQSsLQk0FM_1a6_k9DHjCB8DkeMn6h5Y'
+    # Ensure env var is set via .env or OS environment
+    settings = get_settings()
+    if not settings.GOOGLE_API_KEY:
+        raise RuntimeError("GOOGLE_API_KEY is not set. Add it to .env before running.")
     asyncio.run(main())
