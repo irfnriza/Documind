@@ -13,11 +13,13 @@ export function useIngest() {
   const setSession = useChatStore((s) => s.setSession)
 
   const mutation = useMutation({
-    mutationFn: async (input: File | string) => {
+    mutationFn: async (input: File[] | File | string) => {
       const form = new FormData()
 
-      if (input instanceof File) {
-        form.append("file", input)
+      if (Array.isArray(input)) {
+        input.forEach(file => form.append("files", file))
+      } else if (input instanceof File) {
+        form.append("files", input)
       } else {
         form.append("url", input)
       }

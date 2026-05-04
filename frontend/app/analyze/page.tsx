@@ -9,6 +9,7 @@ import { ArrowLeft, Scale } from "lucide-react"
 import Link from "next/link"
 import { ApiError } from "@/lib/api"
 import { PdfExportButton } from "@/components/analyze/pdf-export-button"
+import { ShareLinkButton } from "@/components/analyze/share-link-button"
 
 export default function AnalyzePage() {
   const { mutate, isPending, data, error, reset } = useAnalyze()
@@ -89,7 +90,10 @@ export default function AnalyzePage() {
               <div className="space-y-6 animate-in fade-in duration-500">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold text-stone-800">Hasil Analisis</h2>
-                  <PdfExportButton targetId="pdf-export-content" />
+                  <div className="flex items-center gap-2">
+                    <ShareLinkButton data={data} />
+                    <PdfExportButton targetId="pdf-export-content" />
+                  </div>
                 </div>
                 
                 <div id="pdf-export-content" className="space-y-6 bg-stone-50 pb-4">

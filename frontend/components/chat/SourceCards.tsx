@@ -4,6 +4,8 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ChevronDown, FileText, ExternalLink } from "lucide-react"
 import type { Source } from "@/types/api"
+import { PdfViewer } from "./PdfViewer"
+import { useChatStore } from "@/stores/chatStore"
 
 interface SourceCardsProps {
   sources: Source[]
@@ -11,12 +13,26 @@ interface SourceCardsProps {
 
 export function SourceCards({ sources }: SourceCardsProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [viewerState, setViewerState] = useState<{ isOpen: boolean; source: Source | null }>({
+    isOpen: false,
+    source: null
+  })
+  
+  const { sessionId } = useChatStore()
 
   if (!sources || sources.length === 0) return null
 
   // Show max 3 sources, hide rest behind toggle
   const visibleSources = isExpanded ? sources : sources.slice(0, 3)
   const hasMore = sources.length > 3
+
+  const handleOpenViewer = (source: Source) => {
+    // Only open PDF viewer for PDFs
+    const filename = source.filename || ""
+    if (filename.toLowerCase().endsWith(".pdf")) {
+      setViewerState({ isOpen: true, source })
+    }
+  }
 
   return (
     <div className="mt-2 space-y-1.5">
@@ -37,7 +53,11 @@ export function SourceCards({ sources }: SourceCardsProps) {
       {isExpanded && (
         <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
           {visibleSources.map((source, index) => (
-            <SourceCard key={source.chunk_id || index} source={source} />
+            <SourceCard 
+              key={source.chunk_id || index} 
+              source={source} 
+              onClick={() => handleOpenViewer(source)}
+            />
           ))}
           {hasMore && !isExpanded && (
             <p className="text-xs text-stone-400">
@@ -46,11 +66,22 @@ export function SourceCards({ sources }: SourceCardsProps) {
           )}
         </div>
       )}
+      
+      {viewerState.source && viewerState.isOpen && sessionId && (
+        <PdfViewer
+          isOpen={viewerState.isOpen}
+          onClose={() => setViewerState({ isOpen: false, source: null })}
+          sessionId={sessionId}
+          filename={viewerState.source.filename || ""}
+          pageNumber={viewerState.source.page}
+          highlightText={viewerState.source.text}
+        />
+      )}
     </div>
   )
 }
 
-function SourceCard({ source }: { source: Source }) {
+function SourceCard({ source, onClick }: { source: Source, onClick: () => void }) {
   const [showFull, setShowFull] = useState(false)
 
   const truncatedText =
@@ -59,32 +90,55 @@ function SourceCard({ source }: { source: Source }) {
       : source.text
 
   const scorePercent = Math.round(source.score * 100)
+  const isPdf = (source.filename || "").toLowerCase().endsWith(".pdf")
 
   return (
     <div
-      className="p-2.5 bg-stone-50 rounded-lg border border-stone-100 text-xs"
+      onClick={(e) => {
+        // Prevent click if clicking the "Tutup/Lihat selengkapnya" button
+        if ((e.target as HTMLElement).tagName !== 'BUTTON' && isPdf && source.page > 0) {
+          onClick()
+        }
+      }}
+      className={cn(
+        "p-2.5 bg-stone-50 rounded-lg border border-stone-100 text-xs transition-colors",
+        isPdf && source.page > 0 ? "cursor-pointer hover:bg-stone-100 hover:border-stone-200" : ""
+      )}
       style={{
         boxShadow:
           "rgba(14, 63, 126, 0.02) 0px 0px 0px 1px, rgba(42, 51, 69, 0.02) 0px 1px 1px -0.5px",
       }}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-stone-500 font-medium">
-          {source.page > 0 ? `Halaman ${source.page}` : "Dokumen"}
-        </span>
-        <span
-          className={cn(
-            "px-1.5 py-0.5 rounded-full font-mono text-[10px]",
-            scorePercent >= 80
-              ? "bg-green-100 text-green-700"
-              : scorePercent >= 60
-                ? "bg-amber-100 text-amber-700"
-                : "bg-stone-100 text-stone-500",
+        <div className="flex items-center gap-1.5">
+          <span className="text-stone-500 font-medium">
+            {source.filename || "Dokumen"}
+          </span>
+          <span className="text-stone-400 text-[10px]">&bull;</span>
+          <span className="text-stone-500 font-medium">
+            {source.page > 0 ? `Hal ${source.page}` : ""}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isPdf && source.page > 0 && (
+            <span className="text-[10px] text-blue-500 font-medium flex items-center gap-0.5">
+              <ExternalLink className="w-3 h-3" />
+              Lihat PDF
+            </span>
           )}
-        >
-          {scorePercent}%
-        </span>
-      </div>
+          <span
+            className={cn(
+              "px-1.5 py-0.5 rounded-full font-mono text-[10px]",
+              scorePercent >= 80
+                ? "bg-green-100 text-green-700"
+                : scorePercent >= 60
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-stone-100 text-stone-500",
+            )}
+          >
+            {scorePercent}%
+          </span>
+        </div>
       <p className="text-stone-600 font-mono leading-relaxed">
         {showFull ? source.text : truncatedText}
       </p>

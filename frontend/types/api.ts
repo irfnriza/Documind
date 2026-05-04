@@ -19,6 +19,7 @@ export interface Source {
   text: string
   page: number
   score: number
+  filename?: string
 }
 
 export interface QueryResponse {
