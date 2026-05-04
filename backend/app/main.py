@@ -13,6 +13,8 @@ from app.db import get_sessions_collection, get_chunks_collection
 from app.api.ingest import router as ingest_router
 from app.api.query import router as query_router
 from app.api.analyze import router as analyze_router
+from app.api.analyze_share import router as analyze_share_router
+from app.api.documents import router as documents_router
 from app.utils.logger import logger
 
 
@@ -28,6 +30,12 @@ async def lifespan(application: FastAPI):
         await sessions.create_index("created_at", expireAfterSeconds=settings.SESSION_TTL_HOURS * 3600)
         await chunks.create_index("session_id")
         await chunks.create_index("created_at", expireAfterSeconds=settings.SESSION_TTL_HOURS * 3600)
+        
+        # TTL for documents
+        from app.db import get_db
+        db = get_db()
+        await db["documents"].create_index("created_at", expireAfterSeconds=settings.SESSION_TTL_HOURS * 3600)
+        await db["shared_analysis"].create_index("created_at", expireAfterSeconds=24 * 3600)
 
         logger.info("DocuMind API started (serverless mode)")
     except Exception as e:
@@ -61,6 +69,8 @@ def create_app() -> FastAPI:
     application.include_router(ingest_router, tags=["Ingestion"])
     application.include_router(query_router, tags=["Query"])
     application.include_router(analyze_router, tags=["Analysis"])
+    application.include_router(analyze_share_router, tags=["Analysis Share"])
+    application.include_router(documents_router, tags=["Documents"])
 
     # Health check
     @application.get("/")

@@ -23,64 +23,110 @@ class SessionNotFoundError(Exception):
 
 
 async def ingest_document(
-    file_bytes: bytes | None = None,
-    filename: str | None = None,
+    files_data: List[dict] | None = None,
     url: str | None = None,
 ) -> dict:
     """
-    Ingest a document: load → chunk → embed → store in MongoDB.
-
+    Ingest multiple documents or a URL: load → chunk → embed → store in MongoDB.
+    files_data is a list of dicts: {"filename": str, "content_type": str, "bytes": bytes}
     Returns dict with session_id, filename, chunks count, status.
     """
-    # Load document
-    if file_bytes and filename:
-        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
-        if ext == "pdf":
-            full_text, pages_data = load_pdf(file_bytes)
-        elif ext in ("docx", "doc"):
-            full_text, pages_data = load_docx(file_bytes)
-        else:
-            raise DocumentLoadError(f"Format file tidak didukung: .{ext}. Gunakan PDF atau DOCX.")
+    session_id = str(uuid.uuid4())
+    all_chunks = []
+    all_metadatas = []
+    filenames = []
+    
+    # Process files
+    if files_data:
+        for f in files_data:
+            filename = f["filename"]
+            file_bytes = f["bytes"]
+            filenames.append(filename)
+            
+            ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+            try:
+                if ext == "pdf":
+                    full_text, pages_data = load_pdf(file_bytes)
+                elif ext in ("docx", "doc"):
+                    full_text, pages_data = load_docx(file_bytes)
+                else:
+                    raise DocumentLoadError(f"Format file tidak didukung: .{ext}. Gunakan PDF atau DOCX.")
+                
+                # Chunk text
+                chunks, metadatas = chunk_text(full_text, pages_data)
+                
+                # Tag metadatas with filename so we know which chunk belongs to which file
+                for m in metadatas:
+                    m["filename"] = filename
+                    
+                all_chunks.extend(chunks)
+                all_metadatas.extend(metadatas)
+                
+                # Save raw PDF to MongoDB for the PDF viewer
+                if ext == "pdf":
+                    from app.db import get_db
+                    db = get_db()
+                    documents_col = db["documents"]
+                    import bson
+                    # Only store if under 15MB (BSON limit is 16MB)
+                    if len(file_bytes) < 15 * 1024 * 1024:
+                        await documents_col.insert_one({
+                            "session_id": session_id,
+                            "filename": filename,
+                            "content_type": "application/pdf",
+                            "data": bson.Binary(file_bytes),
+                            "created_at": datetime.now(timezone.utc)
+                        })
+            except Exception as e:
+                logger.error(f"Failed to load {filename}: {e}")
+                raise DocumentLoadError(f"Gagal memproses {filename}: {str(e)}")
+
+    # Process URL
     elif url:
         full_text, pages_data = await load_url(url)
         filename = url[:80]
+        filenames.append(filename)
+        chunks, metadatas = chunk_text(full_text, pages_data)
+        for m in metadatas:
+            m["filename"] = filename
+        all_chunks.extend(chunks)
+        all_metadatas.extend(metadatas)
     else:
         raise DocumentLoadError("Tidak ada file atau URL yang diberikan.")
 
-    # Chunk text
-    chunks, metadatas = chunk_text(full_text, pages_data)
-
-    if not chunks:
+    if not all_chunks:
         raise DocumentLoadError("Dokumen tidak menghasilkan chunk yang valid.")
 
     # Generate embeddings for all chunks
     try:
         embeddings_model = get_embeddings()
-        embeddings_vectors = embeddings_model.embed_documents(chunks)
+        embeddings_vectors = embeddings_model.embed_documents(all_chunks)
     except Exception as e:
         logger.error(f"Failed to generate embeddings: {e}")
         raise
 
-    # Create session in MongoDB
-    session_id = str(uuid.uuid4())
     sessions = get_sessions_collection()
+
+    display_filename = filenames[0] if len(filenames) == 1 else f"{filenames[0]} + {len(filenames)-1} lainnya"
 
     await sessions.insert_one({
         "_id": session_id,
-        "filename": filename or "unknown",
-        "chunks_count": len(chunks),
+        "filenames": filenames,
+        "display_filename": display_filename,
+        "chunks_count": len(all_chunks),
         "created_at": datetime.now(timezone.utc),
     })
 
     # Store chunks with embeddings in MongoDB
-    await store_chunks(session_id, chunks, metadatas, embeddings_vectors)
+    await store_chunks(session_id, all_chunks, all_metadatas, embeddings_vectors)
 
-    logger.info(f"Session created: {session_id}, {len(chunks)} chunks")
+    logger.info(f"Session created: {session_id}, {len(all_chunks)} chunks from {len(filenames)} files")
 
     return {
         "session_id": session_id,
-        "filename": filename or "unknown",
-        "chunks": len(chunks),
+        "filename": display_filename,
+        "filenames": filenames,
+        "chunks": len(all_chunks),
         "status": "ready",
     }
 
