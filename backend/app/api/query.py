@@ -4,9 +4,10 @@ Receives question + session_id, retrieves from FAISS, generates answer.
 """
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.rag.pipeline import query_document, SessionNotFoundError
+from app.rag.pipeline import query_document, query_document_stream, SessionNotFoundError
 from app.utils.logger import logger
 
 router = APIRouter()
@@ -43,3 +44,21 @@ async def query(request: QueryRequest):
     except Exception as e:
         logger.error(f"Query error: {e}")
         raise HTTPException(status_code=500, detail="Gagal memproses pertanyaan.")
+
+
+@router.post("/api/query_stream")
+async def query_stream(request: QueryRequest):
+    """
+    Stream a document query answer using Server-Sent Events (SSE).
+    """
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Pertanyaan tidak boleh kosong.")
+
+    return StreamingResponse(
+        query_document_stream(
+            session_id=request.session_id,
+            question=request.question.strip(),
+            top_k=request.top_k,
+        ),
+        media_type="text/event-stream"
+    )

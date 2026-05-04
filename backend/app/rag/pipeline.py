@@ -12,7 +12,7 @@ from app.rag.loader import load_pdf, load_docx, load_url, DocumentLoadError
 from app.rag.chunker import chunk_text
 from app.rag.embedder import get_embeddings
 from app.rag.retriever import store_chunks, search
-from app.rag.generator import generate_answer
+from app.rag.generator import generate_answer, generate_answer_stream
 from app.db import get_sessions_collection
 from app.utils.logger import logger
 
@@ -119,3 +119,36 @@ async def query_document(
         "sources": sources,
         "latency_ms": latency_ms,
     }
+
+
+import json
+
+async def query_document_stream(
+    session_id: str,
+    question: str,
+    top_k: int = 5,
+):
+    """
+    Query a document, returning an async generator that yields SSE events.
+    """
+    sessions = get_sessions_collection()
+
+    # Verify session exists
+    session = await sessions.find_one({"_id": session_id})
+    if not session:
+        raise SessionNotFoundError("Session tidak ditemukan atau sudah expired.")
+
+    start_time = time.time()
+
+    # Retrieve relevant chunks via similarity search
+    sources = await search(session_id, question, top_k=top_k)
+
+    # Generate answer stream
+    async for chunk in generate_answer_stream(question, sources):
+        if chunk:
+            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+
+    # Send sources at the end
+    latency_ms = int((time.time() - start_time) * 1000)
+    yield f"data: {json.dumps({'type': 'sources', 'sources': sources, 'latency_ms': latency_ms})}\n\n"
+    yield "data: {\"type\": \"done\"}\n\n"
