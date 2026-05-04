@@ -16,12 +16,11 @@ export function DropZone() {
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
-      const file = acceptedFiles[0]
-      if (!file) return
+      if (!acceptedFiles.length) return
 
       setUploadState("uploading")
       try {
-        await mutateAsync(file)
+        await mutateAsync(acceptedFiles)
         setUploadState("success")
       } catch {
         setUploadState("error")
@@ -37,7 +36,7 @@ export function DropZone() {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
     },
     maxSize: 10 * 1024 * 1024, // 10MB
-    multiple: false,
+    multiple: true,
     disabled: isPending,
   })
 
@@ -104,7 +103,7 @@ export function DropZone() {
               : "Drag & drop dokumen Anda"}
           </p>
           <p className="text-sm text-stone-400 mt-1">
-            atau klik untuk memilih file
+            atau klik untuk memilih file (bisa multiple)
           </p>
           <p className="text-xs text-stone-400 mt-3">
             PDF atau DOCX • Maksimum 10MB

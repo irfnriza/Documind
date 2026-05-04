@@ -8,6 +8,8 @@ import { AnimatedOrb } from "@/components/chat/animated-orb"
 import { ArrowLeft, Scale } from "lucide-react"
 import Link from "next/link"
 import { ApiError } from "@/lib/api"
+import { PdfExportButton } from "@/components/analyze/pdf-export-button"
+import { ShareLinkButton } from "@/components/analyze/share-link-button"
 
 export default function AnalyzePage() {
   const { mutate, isPending, data, error, reset } = useAnalyze()
@@ -86,32 +88,42 @@ export default function AnalyzePage() {
             {/* Results */}
             {data && !isPending && (
               <div className="space-y-6 animate-in fade-in duration-500">
-                {/* Risk Score */}
-                <RiskScore
-                  score={data.risk_score}
-                  bahayaCount={data.bahaya_count}
-                  perhatianCount={data.perhatian_count}
-                  amanCount={data.aman_count}
-                />
-
-                {/* Summary */}
-                <div
-                  className="p-4 bg-white rounded-2xl border border-stone-200"
-                  style={{
-                    boxShadow:
-                      "rgba(14, 63, 126, 0.03) 0px 0px 0px 1px, rgba(42, 51, 69, 0.03) 0px 1px 1px -0.5px",
-                  }}
-                >
-                  <h3 className="text-sm font-semibold text-stone-700 mb-2">
-                    Ringkasan
-                  </h3>
-                  <p className="text-sm text-stone-600 leading-relaxed">
-                    {data.summary}
-                  </p>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-stone-800">Hasil Analisis</h2>
+                  <div className="flex items-center gap-2">
+                    <ShareLinkButton data={data} />
+                    <PdfExportButton targetId="pdf-export-content" />
+                  </div>
                 </div>
-
-                {/* Clause List */}
-                <ClauseList clauses={data.clauses} />
+                
+                <div id="pdf-export-content" className="space-y-6 bg-stone-50 pb-4">
+                  {/* Risk Score */}
+                  <RiskScore
+                    score={data.risk_score}
+                    bahayaCount={data.bahaya_count}
+                    perhatianCount={data.perhatian_count}
+                    amanCount={data.aman_count}
+                  />
+  
+                  {/* Summary */}
+                  <div
+                    className="p-4 bg-white rounded-2xl border border-stone-200"
+                    style={{
+                      boxShadow:
+                        "rgba(14, 63, 126, 0.03) 0px 0px 0px 1px, rgba(42, 51, 69, 0.03) 0px 1px 1px -0.5px",
+                    }}
+                  >
+                    <h3 className="text-sm font-semibold text-stone-700 mb-2">
+                      Ringkasan
+                    </h3>
+                    <p className="text-sm text-stone-600 leading-relaxed">
+                      {data.summary}
+                    </p>
+                  </div>
+  
+                  {/* Clause List */}
+                  <ClauseList clauses={data.clauses} />
+                </div>
               </div>
             )}
 

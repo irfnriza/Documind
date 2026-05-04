@@ -31,6 +31,7 @@ async def store_chunks(
     for text, meta, embedding in zip(chunks, metadatas, embeddings_vectors):
         documents.append({
             "session_id": session_id,
+            "filename": meta.get("filename", ""),
             "text": text,
             "embedding": embedding,
             "page": meta.get("page", 0),
@@ -59,7 +60,7 @@ async def search(session_id: str, query: str, top_k: int = 5) -> List[dict]:
     # Fetch all chunks for this session
     cursor = collection.find(
         {"session_id": session_id},
-        {"text": 1, "embedding": 1, "page": 1, "chunk_id": 1, "_id": 0},
+        {"text": 1, "embedding": 1, "page": 1, "chunk_id": 1, "filename": 1, "_id": 0},
     )
     docs = await cursor.to_list(length=500)
 
@@ -80,6 +81,7 @@ async def search(session_id: str, query: str, top_k: int = 5) -> List[dict]:
             "text": doc["text"],
             "score": round(score, 4),
             "page": doc.get("page", 0),
+            "filename": doc.get("filename", ""),
             "chunk_id": doc.get("chunk_id"),
         })
 

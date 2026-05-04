@@ -17,53 +17,57 @@ MAX_FILE_SIZE = 4 * 1024 * 1024  # 4MB (Vercel payload limit is 4.5MB)
 
 @router.post("/api/ingest")
 async def ingest(
-    file: Optional[UploadFile] = File(None),
+    files: Optional[list[UploadFile]] = File(None),
     url: Optional[str] = Form(None),
 ):
     """
-    Ingest a document for Q&A.
-    Accepts either a PDF/DOCX file or a URL.
+    Ingest documents for Q&A.
+    Accepts either a list of PDF/DOCX files or a URL.
     """
-    # Validate: at least one of file or url must be provided
-    if not file and not url:
+    # Validate: at least one of files or url must be provided
+    if not files and not url:
         raise HTTPException(
             status_code=422,
-            detail="Tidak ada file atau URL yang diberikan. Kirim salah satu.",
+            detail="Tidak ada file atau URL yang diberikan. Kirim setidaknya satu file.",
         )
 
-    file_bytes = None
-    filename = None
+    files_data = []
 
-    if file:
-        # Validate file type
-        if file.content_type and file.content_type not in [
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/msword",
-        ]:
-            # Also check by extension as fallback
-            ext = (file.filename or "").lower().rsplit(".", 1)[-1] if file.filename else ""
-            if ext not in ("pdf", "docx", "doc"):
+    if files:
+        for file in files:
+            # Validate file type
+            if file.content_type and file.content_type not in [
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/msword",
+            ]:
+                ext = (file.filename or "").lower().rsplit(".", 1)[-1] if file.filename else ""
+                if ext not in ("pdf", "docx", "doc"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Format file {file.filename} tidak didukung. Gunakan PDF atau DOCX.",
+                    )
+
+            # Read file bytes
+            file_bytes = await file.read()
+            filename = file.filename or "unknown"
+
+            # Validate file size
+            if len(file_bytes) > MAX_FILE_SIZE:
                 raise HTTPException(
                     status_code=400,
-                    detail="Format file tidak didukung. Gunakan PDF atau DOCX.",
+                    detail=f"Ukuran file {filename} melebihi batas maksimum {MAX_FILE_SIZE // (1024*1024)}MB.",
                 )
-
-        # Read file bytes
-        file_bytes = await file.read()
-        filename = file.filename or "unknown"
-
-        # Validate file size
-        if len(file_bytes) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Ukuran file melebihi batas maksimum {MAX_FILE_SIZE // (1024*1024)}MB.",
-            )
+                
+            files_data.append({
+                "filename": filename,
+                "content_type": file.content_type,
+                "bytes": file_bytes
+            })
 
     try:
         result = await ingest_document(
-            file_bytes=file_bytes,
-            filename=filename,
+            files_data=files_data if files_data else None,
             url=url,
         )
         return result

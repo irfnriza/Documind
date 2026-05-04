@@ -70,3 +70,45 @@ Pertanyaan: {question}"""
     except Exception as e:
         logger.error(f"LLM generation failed: {e}")
         raise
+
+
+async def generate_answer_stream(question: str, sources: List[dict]):
+    """
+    Generate an answer from retrieved sources using Gemini, streaming the response.
+    
+    Args:
+        question: User's question
+        sources: List of retrieved chunks
+        
+    Yields:
+        Chunks of generated answer string
+    """
+    context_parts = []
+    total_chars = 0
+    for source in sources:
+        text = source["text"]
+        if total_chars + len(text) > 4000:
+            break
+        context_parts.append(text)
+        total_chars += len(text)
+
+    context = "\n---\n".join(context_parts)
+
+    user_prompt = f"""Konteks:
+{context}
+
+Pertanyaan: {question}"""
+
+    llm = get_llm()
+
+    try:
+        async for chunk in llm.astream([
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=user_prompt),
+        ]):
+            yield chunk.content
+
+    except Exception as e:
+        logger.error(f"LLM stream generation failed: {e}")
+        raise
+
