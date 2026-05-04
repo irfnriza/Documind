@@ -4,8 +4,12 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ChevronDown, FileText, ExternalLink } from "lucide-react"
 import type { Source } from "@/types/api"
-import { PdfViewer } from "./PdfViewer"
+import dynamic from "next/dynamic"
 import { useChatStore } from "@/stores/chatStore"
+
+const PdfViewer = dynamic(() => import("./PdfViewer").then((mod) => mod.PdfViewer), {
+  ssr: false,
+})
 
 interface SourceCardsProps {
   sources: Source[]
@@ -139,6 +143,7 @@ function SourceCard({ source, onClick }: { source: Source, onClick: () => void }
             {scorePercent}%
           </span>
         </div>
+      </div>
       <p className="text-stone-600 font-mono leading-relaxed">
         {showFull ? source.text : truncatedText}
       </p>
