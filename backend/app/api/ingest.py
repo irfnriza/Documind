@@ -12,7 +12,7 @@ from app.utils.logger import logger
 
 router = APIRouter()
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 4 * 1024 * 1024  # 4MB (Vercel payload limit is 4.5MB)
 
 
 @router.post("/api/ingest")
@@ -72,6 +72,4 @@ async def ingest(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Ingest error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Gagal memproses dokumen. Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gagal memproses dokumen: {str(e)}")

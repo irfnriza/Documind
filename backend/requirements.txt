@@ -1,15 +1,15 @@
 # Web framework
 fastapi>=0.110
-uvicorn[standard]
 python-multipart
 
 # AI / LLM
 langchain>=0.2
 langchain-google-genai
-langchain-community
+langchain-text-splitters
 
-# Vector store
-faiss-cpu
+# MongoDB
+pymongo
+motor
 
 # Document parsing
 pdfplumber
@@ -22,3 +22,6 @@ httpx
 # Configuration
 pydantic-settings
 python-dotenv
+
+# Math (for cosine similarity fallback)
+numpy

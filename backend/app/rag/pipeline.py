@@ -1,16 +1,19 @@
 """
 RAG Pipeline orchestrator — ingest and query document flows.
+All state is persisted in MongoDB (serverless-compatible).
 """
 
 import uuid
 import time
 from typing import List
+from datetime import datetime, timezone
 
 from app.rag.loader import load_pdf, load_docx, load_url, DocumentLoadError
 from app.rag.chunker import chunk_text
-from app.rag.retriever import create_index, search
+from app.rag.embedder import get_embeddings
+from app.rag.retriever import store_chunks, search
 from app.rag.generator import generate_answer
-from app.dependencies import get_session_store, get_session_meta
+from app.db import get_sessions_collection
 from app.utils.logger import logger
 
 
@@ -25,7 +28,7 @@ async def ingest_document(
     url: str | None = None,
 ) -> dict:
     """
-    Ingest a document: load → chunk → embed → store in FAISS.
+    Ingest a document: load → chunk → embed → store in MongoDB.
 
     Returns dict with session_id, filename, chunks count, status.
     """
@@ -50,23 +53,27 @@ async def ingest_document(
     if not chunks:
         raise DocumentLoadError("Dokumen tidak menghasilkan chunk yang valid.")
 
-    # Create FAISS index
+    # Generate embeddings for all chunks
     try:
-        index = create_index(chunks, metadatas)
+        embeddings_model = get_embeddings()
+        embeddings_vectors = embeddings_model.embed_documents(chunks)
     except Exception as e:
-        logger.error(f"Failed to create FAISS index: {e}")
+        logger.error(f"Failed to generate embeddings: {e}")
         raise
 
-    # Store in session
+    # Create session in MongoDB
     session_id = str(uuid.uuid4())
-    store = get_session_store()
-    meta = get_session_meta()
+    sessions = get_sessions_collection()
 
-    store[session_id] = index
-    meta[session_id] = {
-        "last_active": time.time(),
+    await sessions.insert_one({
+        "_id": session_id,
         "filename": filename or "unknown",
-    }
+        "chunks_count": len(chunks),
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    # Store chunks with embeddings in MongoDB
+    await store_chunks(session_id, chunks, metadatas, embeddings_vectors)
 
     logger.info(f"Session created: {session_id}, {len(chunks)} chunks")
 
@@ -84,24 +91,21 @@ async def query_document(
     top_k: int = 5,
 ) -> dict:
     """
-    Query a document: retrieve from FAISS → generate answer.
+    Query a document: retrieve from MongoDB → generate answer.
 
     Returns dict with answer, sources, latency_ms.
     """
-    store = get_session_store()
-    meta = get_session_meta()
+    sessions = get_sessions_collection()
 
-    if session_id not in store:
+    # Verify session exists
+    session = await sessions.find_one({"_id": session_id})
+    if not session:
         raise SessionNotFoundError("Session tidak ditemukan atau sudah expired.")
-
-    # Update last active
-    meta[session_id]["last_active"] = time.time()
 
     start_time = time.time()
 
-    # Retrieve relevant chunks
-    index = store[session_id]
-    sources = search(index, question, top_k=top_k)
+    # Retrieve relevant chunks via similarity search
+    sources = await search(session_id, question, top_k=top_k)
 
     # Generate answer
     answer = await generate_answer(question, sources)

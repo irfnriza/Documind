@@ -1,6 +1,6 @@
 """
 Application settings via pydantic-settings.
-All environment variables are read from .env file or OS environment.
+All environment variables are read from OS environment (Vercel) or .env file (local dev).
 """
 
 import os
@@ -13,6 +13,9 @@ class Settings(BaseSettings):
 
     # Google AI Studio
     GOOGLE_API_KEY: str = ""
+
+    # MongoDB
+    MONGO_URI: str = ""
 
     # App
     APP_ENV: str = "development"

@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+.env
+.env.example
+test_flow.py
+test_rag.py
+sample_document.docx
+documind-backend.md
+*.pyc

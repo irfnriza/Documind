@@ -1,20 +1,39 @@
 """
 FastAPI application factory.
-CORS, router registration, session store, TTL cleanup.
+CORS, router registration. Serverless-compatible (no background tasks).
 """
 
-import asyncio
-import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.dependencies import get_session_store, get_session_meta
+from app.db import get_sessions_collection, get_chunks_collection
 from app.api.ingest import router as ingest_router
 from app.api.query import router as query_router
 from app.api.analyze import router as analyze_router
 from app.utils.logger import logger
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Startup/shutdown lifecycle — creates MongoDB indexes once."""
+    try:
+        # Create TTL index on sessions — auto-deletes after SESSION_TTL_HOURS
+        settings = get_settings()
+        sessions = get_sessions_collection()
+        chunks = get_chunks_collection()
+
+        await sessions.create_index("created_at", expireAfterSeconds=settings.SESSION_TTL_HOURS * 3600)
+        await chunks.create_index("session_id")
+        await chunks.create_index("created_at", expireAfterSeconds=settings.SESSION_TTL_HOURS * 3600)
+
+        logger.info("DocuMind API started (serverless mode)")
+    except Exception as e:
+        logger.warning(f"Index creation skipped (may already exist): {e}")
+
+    yield  # app runs here
 
 
 def create_app() -> FastAPI:
@@ -24,13 +43,15 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title="DocuMind API",
         description="AI Document Intelligence — Legal Clause Analyzer",
-        version="1.0.0",
+        version="2.0.0",
+        lifespan=lifespan,
     )
 
-    # CORS
+    # CORS — support comma-separated origins
+    origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS.split(","),
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
@@ -44,44 +65,14 @@ def create_app() -> FastAPI:
     # Health check
     @application.get("/")
     async def health():
-        store = get_session_store()
         return {
             "status": "ok",
             "service": "DocuMind API",
-            "active_sessions": len(store),
+            "version": "2.0.0",
+            "runtime": "serverless",
         }
 
-    # TTL cleanup background task
-    @application.on_event("startup")
-    async def start_cleanup():
-        asyncio.create_task(cleanup_expired_sessions())
-        logger.info("DocuMind API started")
-
     return application
-
-
-async def cleanup_expired_sessions():
-    """Remove expired sessions every 30 minutes."""
-    settings = get_settings()
-    ttl_seconds = settings.SESSION_TTL_HOURS * 3600
-
-    while True:
-        await asyncio.sleep(1800)  # every 30 minutes
-        now = time.time()
-        store = get_session_store()
-        meta = get_session_meta()
-
-        expired = [
-            sid for sid, m in meta.items()
-            if now - m["last_active"] > ttl_seconds
-        ]
-
-        for sid in expired:
-            store.pop(sid, None)
-            meta.pop(sid, None)
-
-        if expired:
-            logger.info(f"Cleaned up {len(expired)} expired sessions")
 
 
 app = create_app()
